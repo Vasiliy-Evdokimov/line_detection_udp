@@ -19,8 +19,9 @@ namespace udp_draw
 {
     public struct CamData
     {
-        public int width;
-        public int height;
+        public int counter;
+        public int img_width;
+        public int img_height;
         public bool error_flag;
         public int points_count;
         public int hor_count;
@@ -40,10 +41,6 @@ namespace udp_draw
         const int left_offset = 10;
         //
         string curr_msg = "";
-        byte error_flag = 0;
-        int img_width = 0, img_height = 0;
-        List<Point> curr_points = new List<Point>();
-        List<int> curr_hor = new List<int>();
 
         CamData[] cam_data = new CamData[2];
 
@@ -75,31 +72,45 @@ namespace udp_draw
             // Настройка шрифта
             Font font = new Font("Arial", 12);
             // Настройка координат текста
-            float x = 10;
-            float y = 10;
-            // Рисование текста            
-            if (SHOW_MSGS)
-                g.DrawString(curr_msg, font, Brushes.Black, x, y);
+            // Рисование текста
+            //  if (SHOW_MSGS)
+            //      g.DrawString(curr_msg, font, Brushes.Black, 10, 10);
             //
-            Pen borderPen = new Pen(Color.Yellow, 4);
-            Brush borderBrush = new SolidBrush(Color.Black);            
-            g.FillRectangle(borderBrush, left_offset, top_offset, img_width, img_height);
-            //
-            if (error_flag != 0) {
-                Brush errorBrush = new SolidBrush(Color.Red);
-                g.FillEllipse(errorBrush, left_offset + 20, top_offset + 20, 30, 30);
-            } else {
-                Pen linePen = new Pen(Color.Green, 4);
-                if (curr_points.Count > 1)                
-                    for (int i = 1; i < curr_points.Count; i++)
-                        g.DrawLine(linePen, curr_points[i - 1], curr_points[i]);
+
+            int offset = 0;
+
+            for (int i = 0; i < cam_data.Length; i++) {
+
+                CamData cd = cam_data[i];
+
+                Pen borderPen = new Pen(Color.Yellow, 4);
+                Brush borderBrush = new SolidBrush(Color.Black);
+                g.FillRectangle(borderBrush, left_offset + offset, top_offset, cd.img_width, cd.img_height);
                 //
-                Pen horPen = new Pen(Color.Red, 4);
-                for (int i = 0; i < curr_hor.Count; i++)
-                    g.DrawLine(horPen, 
-                        left_offset, curr_hor[i], 
-                        left_offset + img_width, curr_hor[i]);
-            }
+                if (cd.error_flag)
+                {
+                    Brush errorBrush = new SolidBrush(Color.Red);
+                    g.FillEllipse(errorBrush, left_offset + offset + 20, top_offset + 20, 30, 30);
+                }
+                else
+                {
+                    Pen linePen = new Pen(Color.Green, 4);
+                    if (cd.curr_points != null)
+                    if (cd.curr_points.Count > 1)
+                        for (int j = 1; j < cd.curr_points.Count; j++)
+                            g.DrawLine(linePen, cd.curr_points[j - 1], cd.curr_points[j]);
+                    //
+                    Pen horPen = new Pen(Color.Red, 4);
+                    if (cd.curr_hor != null)
+                    for (int j = 0; j < cd.curr_hor.Count; j++)
+                        g.DrawLine(horPen,
+                            left_offset + offset, cd.curr_hor[j],
+                            left_offset + offset + cd.img_width, cd.curr_hor[j]);
+                }
+
+                offset += cd.img_width + 10;
+
+            }            
         }
 
         private void ProcessReceivedData(byte[] receivedBytes)
@@ -108,43 +119,60 @@ namespace udp_draw
             //
             string fullData = BitConverter.ToString(receivedBytes).Replace("-", " ");
             //
-            int counter = BitConverter.ToInt16(receivedBytes, 0);
-            img_width = BitConverter.ToInt16(receivedBytes, 2);
-            img_height = BitConverter.ToInt16(receivedBytes, 4);
-            error_flag = receivedBytes[6];
-            byte count = receivedBytes[7];
-            byte points_count = (byte)(count >> 4);
-            byte hor_count = (byte)(count & 0xF);
-            //
-            string points_str = "";
-            int x, y;
-            curr_points.Clear();
-            curr_points.Add(new Point((img_width / 2) + left_offset, img_height + top_offset));
-            for (int i = 0; i < points_count; i++) {
-                x = BitConverter.ToInt16(receivedBytes, 8 + i * 4);
-                y = BitConverter.ToInt16(receivedBytes, 10 + i * 4);
-                points_str += string.Format("({0}; {1}) ", x, y);
-                x += left_offset;
-                y += top_offset;
-                curr_points.Add(new Point(x, y));
-            }
-            //
-            curr_hor.Clear();
-            for (int i = 0; i < hor_count; i++) {                
-                y = BitConverter.ToInt16(receivedBytes, 24 + i * 2);
-                points_str += string.Format("({0}) ", y);                
-                y += top_offset;
-                curr_hor.Add(y);
+            int offset = 0;
+            for (int i = 0; i < 2; i++)
+            {
+                int counter = BitConverter.ToInt16(receivedBytes, pack_size * i + 0);
+                int img_width = BitConverter.ToInt16(receivedBytes, pack_size * i + 2);
+                int img_height = BitConverter.ToInt16(receivedBytes, pack_size * i + 4);
+                byte error_flag = receivedBytes[pack_size * i + 6];
+                byte count = receivedBytes[pack_size * i + 7];
+                byte points_count = (byte)(count >> 4);
+                byte hor_count = (byte)(count & 0xF);
+                //
+                cam_data[i].counter = counter;
+                cam_data[i].img_width = img_width;
+                cam_data[i].img_height = img_height;
+                cam_data[i].error_flag = (error_flag > 0);
+                cam_data[i].points_count = points_count;
+                cam_data[i].hor_count = hor_count;
+                //
+                string points_str = "";
+                int x, y;
+                List<Point> curr_points = new List<Point>();
+                curr_points.Add(new Point((img_width / 2) + left_offset + offset, img_height + top_offset));
+                for (int j = 0; j < points_count; j++)
+                {
+                    x = BitConverter.ToInt16(receivedBytes, pack_size * i + 8 + j * 4);
+                    y = BitConverter.ToInt16(receivedBytes, pack_size * i + 10 + j * 4);
+                    points_str += string.Format("({0}; {1}) ", x, y);
+                    x += left_offset + offset;
+                    y += top_offset;
+                    curr_points.Add(new Point(x, y));
+                }
+                cam_data[i].curr_points = curr_points;
+                //
+                List<int> curr_hor = new List<int>();
+                for (int j = 0; j < hor_count; j++)
+                {
+                    y = BitConverter.ToInt16(receivedBytes, pack_size * i + 24 + j * 2);
+                    points_str += string.Format("({0}) ", y);
+                    y += top_offset;
+                    curr_hor.Add(y);
+                }
+                cam_data[i].curr_hor = curr_hor;
+                //
+                offset += img_width + 10;
             }
             //            
             lbMessages.Invoke((MethodInvoker)(() => {
                 if (SHOW_MSGS)
                 {
                     lbMessages.Items.Insert(0, fullData);
-                    curr_msg = string.Format("{0} {1} {2} {3} {4}", counter, img_width, img_height, points_count, points_str);
+                    //curr_msg = string.Format("{0} {1} {2} {3} {4}", counter, img_width, img_height, points_count, points_str);
                 }
                 this.Invalidate();
-            }));            
+            }));
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
