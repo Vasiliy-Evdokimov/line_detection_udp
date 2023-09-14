@@ -33,8 +33,6 @@ namespace udp_draw
     {
         const bool SHOW_MSGS = false;
         //
-        const int Port = 8888;
-        UdpClient udpServer;
         Queue<string> msgs = new Queue<string>();
         //
         const int top_offset = 50;
@@ -44,29 +42,33 @@ namespace udp_draw
 
         CamData[] cam_data = new CamData[2];
 
+        const string serverIP = "192.168.1.5";
+        const int serverPort = 8888;
+
+        UdpClient client;
+        IPEndPoint serverEndPoint;
+
+        const string reqMessage = "WAITFORDATA";
+        byte[] reqData;
+        int reqDataLength;
+
         public Form1()
         {
             InitializeComponent();
             //
-            udpServer = new UdpClient(Port);
-            udpServer.BeginReceive(ReceiveCallback, null);
+            client = new UdpClient();
+            IPAddress serverAddress = IPAddress.Parse(serverIP);
+            serverEndPoint = new IPEndPoint(serverAddress, serverPort);
+            //                        
+            reqData = Encoding.ASCII.GetBytes(reqMessage);
+            reqDataLength = reqData.Length;
         }
 
-        private async void Form1_Paint(object sender, PaintEventArgs e)
+        private void Form1_Paint(object sender, PaintEventArgs e)
         {
-            // Получить графический контекст формы
-            Graphics g = e.Graphics;
-            // Выполнить асинхронное рисование
-            //await DrawAsync(g);
-            Draw(g);
+            Draw(e.Graphics);
         }
-
-        private async Task DrawAsync(Graphics g)
-        {
-            // Выполнить рисование на фоне потока
-            await Task.Run(() => Draw(g));
-        }
-
+        
         private void Draw(Graphics g)
         {
             // Настройка шрифта
@@ -166,41 +168,41 @@ namespace udp_draw
             }
             //            
             lbMessages.Invoke((MethodInvoker)(() => {
-                if (SHOW_MSGS)
-                {
+                if (SHOW_MSGS)                
                     lbMessages.Items.Insert(0, fullData);
-                    //curr_msg = string.Format("{0} {1} {2} {3} {4}", counter, img_width, img_height, points_count, points_str);
-                }
+                //
                 this.Invalidate();
             }));
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
-        {
-            udpServer.Close();
-        }
+        {            
+            client.Close();
+        }        
 
-        private void ReceiveCallback(IAsyncResult ar)
+        private void timer1_Tick(object sender, EventArgs e)
         {
             try
-            {
-                
-                IPEndPoint clientEndPoint = new IPEndPoint(IPAddress.Any, Port);
-                byte[] receivedBytes = udpServer.EndReceive(ar, ref clientEndPoint); 
+            {                
 
-                //msgs.Enqueue(receivedMessage);
+                // Отправка сообщения по UDP
+                client.Send(reqData, reqDataLength, serverEndPoint);
+                Console.WriteLine("Сообщение отправлено: {0}", reqMessage);
+
+                IPEndPoint remoteEP = null;
+                byte[] receivedBytes = client.Receive(ref remoteEP);
                 ProcessReceivedData(receivedBytes);
 
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Console.WriteLine("Ошибка: {0}", ex.Message);
             }
-
-            // Продолжаем ожидать новые сообщения
-            udpServer.BeginReceive(ReceiveCallback, null);
+            finally
+            {
+                //
+            }
         }
-        
     }
     
 }
