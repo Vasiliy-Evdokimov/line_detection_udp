@@ -19,14 +19,17 @@ namespace udp_draw
 {
     public struct CamData
     {
-        public int counter;
         public int img_width;
         public int img_height;
         public bool error_flag;
+        //
+        public int max_points_count;
         public int points_count;
-        public int hor_count;
         public List<Point> curr_points;
-        public List<int> curr_hor;        
+        //
+        public int max_hor_count;
+        public int hor_count;
+        public List<int> curr_hor;
     }
 
     public partial class Form1 : Form
@@ -117,38 +120,47 @@ namespace udp_draw
 
         private void ProcessReceivedData(byte[] receivedBytes)
         {
-            const int pack_size = 32;
-            //
             string fullData = BitConverter.ToString(receivedBytes).Replace("-", " ");
             //
-            int offset = 0;
-            for (int i = 0; i < 2; i++)
+            int img_offset = 0;
+            int off = 2;
+
+            int counter = BitConverter.ToInt16(receivedBytes, 0);
+
+            for (int i = 0; i < 2; i++) 
             {
-                int counter = BitConverter.ToInt16(receivedBytes, pack_size * i + 0);
-                int img_width = BitConverter.ToInt16(receivedBytes, pack_size * i + 2);
-                int img_height = BitConverter.ToInt16(receivedBytes, pack_size * i + 4);
-                byte error_flag = receivedBytes[pack_size * i + 6];
-                byte count = receivedBytes[pack_size * i + 7];
-                byte points_count = (byte)(count >> 4);
-                byte hor_count = (byte)(count & 0xF);
+                int img_width = BitConverter.ToInt16(receivedBytes, off + 0);
+                int img_height = BitConverter.ToInt16(receivedBytes, off + 2);
+                int error_flag = BitConverter.ToInt16(receivedBytes, off + 4);
                 //
-                cam_data[i].counter = counter;
+                int max_points_count_idx = off + 6;
+                byte max_points_count = receivedBytes[max_points_count_idx];
+                byte points_count = receivedBytes[max_points_count_idx + 1];
+                //
+                int max_hor_count_idx = off + 8 + max_points_count * 4;
+                byte max_hor_count = receivedBytes[max_hor_count_idx];
+                byte hor_count = receivedBytes[max_hor_count_idx + 1];
+                //
+                int pack_size =
+                    2 + 2 + 2 +
+                    2 + max_points_count * 4 +
+                    2 + max_hor_count * 2;
+                //
                 cam_data[i].img_width = img_width;
                 cam_data[i].img_height = img_height;
-                cam_data[i].error_flag = (error_flag > 0);
+                cam_data[i].max_points_count = max_points_count;
                 cam_data[i].points_count = points_count;
-                cam_data[i].hor_count = hor_count;
                 //
                 string points_str = "";
                 int x, y;
                 List<Point> curr_points = new List<Point>();
-                curr_points.Add(new Point((img_width / 2) + left_offset + offset, img_height + top_offset));
+                curr_points.Add(new Point((img_width / 2) + left_offset + img_offset, img_height + top_offset));
                 for (int j = 0; j < points_count; j++)
                 {
-                    x = BitConverter.ToInt16(receivedBytes, pack_size * i + 8 + j * 4);
-                    y = BitConverter.ToInt16(receivedBytes, pack_size * i + 10 + j * 4);
+                    x = BitConverter.ToInt16(receivedBytes, max_points_count_idx + 2 + j * 4);
+                    y = BitConverter.ToInt16(receivedBytes, max_points_count_idx + 4 + j * 4);
                     points_str += string.Format("({0}; {1}) ", x, y);
-                    x += left_offset + offset;
+                    x += left_offset + img_offset;
                     y += top_offset;
                     curr_points.Add(new Point(x, y));
                 }
@@ -157,16 +169,17 @@ namespace udp_draw
                 List<int> curr_hor = new List<int>();
                 for (int j = 0; j < hor_count; j++)
                 {
-                    y = BitConverter.ToInt16(receivedBytes, pack_size * i + 24 + j * 2);
+                    y = BitConverter.ToInt16(receivedBytes, max_hor_count_idx + 2 + j * 2);
                     points_str += string.Format("({0}) ", y);
                     y += top_offset;
                     curr_hor.Add(y);
                 }
                 cam_data[i].curr_hor = curr_hor;
                 //
-                offset += img_width + 10;
+                off += pack_size;
+                img_offset += img_width + 10;
             }
-            //            
+            //
             lbMessages.Invoke((MethodInvoker)(() => {
                 if (SHOW_MSGS)                
                     lbMessages.Items.Insert(0, fullData);
