@@ -38,7 +38,7 @@ namespace udp_draw
         public int stop_mark_distance;
     }
 
-    public partial class Form1 : Form
+    public partial class MainForm : Form
     {
         const bool SHOW_MSGS = false;
         //
@@ -64,7 +64,7 @@ namespace udp_draw
         Font textFont;
         SolidBrush textBrush;
 
-        public Form1()
+        public MainForm()
         {
             InitializeComponent();
             //
@@ -150,11 +150,17 @@ namespace udp_draw
 
             int counter = BitConverter.ToInt16(receivedBytes, 0);
 
+            int new_form_width = 0;
+            int new_form_height = 0;
+
             for (int i = 0; i < 2; i++) 
             {
                 int img_width = BitConverter.ToInt16(receivedBytes, off + 0);
                 int img_height = BitConverter.ToInt16(receivedBytes, off + 2);
                 int error_flag = BitConverter.ToInt16(receivedBytes, off + 4);
+                //
+                new_form_width += img_width;
+                new_form_height += img_height;
                 //
                 int max_points_count_idx = off + 6;
                 byte max_points_count = receivedBytes[max_points_count_idx];
@@ -217,6 +223,13 @@ namespace udp_draw
                 off += pack_size;
                 img_offset += img_width + 10;
             }
+            //
+            new_form_width += left_offset * 4;
+            //
+            if (this.Width < new_form_width)
+                this.Width = new_form_width;
+            if (this.Height < new_form_height)
+                this.Height = new_form_height;
             //
             lbMessages.Invoke((MethodInvoker)(() => {
                 if (SHOW_MSGS)                
