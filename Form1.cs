@@ -14,6 +14,7 @@ using System.Threading;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 using System.Reflection.Emit;
 using System.Xml.Linq;
+using System.Runtime.ConstrainedExecution;
 
 namespace udp_draw
 {
@@ -30,6 +31,11 @@ namespace udp_draw
         public int max_hor_count;
         public int hor_count;
         public List<int> curr_hor;
+        //
+        public bool fl_slow_zone;
+        public bool fl_stop_zone;
+        public bool fl_stop_mark;
+        public int stop_mark_distance;
     }
 
     public partial class Form1 : Form
@@ -55,6 +61,9 @@ namespace udp_draw
         byte[] reqData;
         int reqDataLength;
 
+        Font textFont;
+        SolidBrush textBrush;
+
         public Form1()
         {
             InitializeComponent();
@@ -65,23 +74,25 @@ namespace udp_draw
             //                        
             reqData = Encoding.ASCII.GetBytes(reqMessage);
             reqDataLength = reqData.Length;
+            //
+            textFont = new Font("Arial", 16);
+            textBrush = new SolidBrush(Color.Cyan);
         }
 
         private void Form1_Paint(object sender, PaintEventArgs e)
         {
             Draw(e.Graphics);
         }
+
+        private void DrawFlagEllipse(Graphics g, int aX, int aY, Color aColor)
+        {
+            Brush br = new SolidBrush(aColor);
+            g.FillEllipse(br, aX, aY, 30, 30);
+        }
         
         private void Draw(Graphics g)
         {
-            // Настройка шрифта
-            Font font = new Font("Arial", 12);
-            // Настройка координат текста
-            // Рисование текста
-            //  if (SHOW_MSGS)
-            //      g.DrawString(curr_msg, font, Brushes.Black, 10, 10);
-            //
-
+            
             int offset = 0;
 
             for (int i = 0; i < cam_data.Length; i++) {
@@ -94,8 +105,7 @@ namespace udp_draw
                 //
                 if (cd.error_flag)
                 {
-                    Brush errorBrush = new SolidBrush(Color.Red);
-                    g.FillEllipse(errorBrush, left_offset + offset + 20, top_offset + 20, 30, 30);
+                    DrawFlagEllipse(g, left_offset + offset + 20, top_offset + 20, Color.Red);
                 }
                 else
                 {
@@ -111,6 +121,19 @@ namespace udp_draw
                         g.DrawLine(horPen,
                             left_offset + offset, cd.curr_hor[j],
                             left_offset + offset + cd.img_width, cd.curr_hor[j]);
+                }
+                //
+                if (cd.fl_slow_zone)
+                    DrawFlagEllipse(g, left_offset + offset + 50, top_offset + 20, Color.Green);
+                if (cd.fl_stop_zone)
+                    DrawFlagEllipse(g, left_offset + offset + 80, top_offset + 20, Color.Blue);
+                if (cd.fl_stop_mark)
+                {
+                    Color clr = Color.Cyan;
+                    DrawFlagEllipse(g, left_offset + offset + 110, top_offset + 20, clr);
+                    //
+                    g.DrawString(cd.stop_mark_distance.ToString(), textFont, textBrush,
+                        left_offset + offset + 140, top_offset + 20);
                 }
 
                 offset += cd.img_width + 10;
@@ -141,15 +164,30 @@ namespace udp_draw
                 byte max_hor_count = receivedBytes[max_hor_count_idx];
                 byte hor_count = receivedBytes[max_hor_count_idx + 1];
                 //
+                int flag_idx = max_hor_count_idx + 2 + max_hor_count * 2;
+                byte zone_flags = receivedBytes[flag_idx];
+                byte stop_distance = receivedBytes[flag_idx + 1];
+                //
                 int pack_size =
                     2 + 2 + 2 +
                     2 + max_points_count * 4 +
-                    2 + max_hor_count * 2;
+                    2 + max_hor_count * 2 + 
+                    2;
                 //
                 cam_data[i].img_width = img_width;
                 cam_data[i].img_height = img_height;
+                cam_data[i].error_flag = (error_flag > 0);
+                //
                 cam_data[i].max_points_count = max_points_count;
                 cam_data[i].points_count = points_count;
+                //
+                cam_data[i].max_points_count = max_hor_count;
+                cam_data[i].points_count = hor_count;
+                //
+                cam_data[i].fl_slow_zone = ((zone_flags & 4) > 0);
+                cam_data[i].fl_stop_zone = ((zone_flags & 2) > 0);
+                cam_data[i].fl_stop_mark = ((zone_flags & 1) > 0);
+                cam_data[i].stop_mark_distance = stop_distance;
                 //
                 string points_str = "";
                 int x, y;
@@ -191,6 +229,9 @@ namespace udp_draw
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {            
             client.Close();
+            //
+            textFont.Dispose();
+            textBrush.Dispose();
         }        
 
         private void timer1_Tick(object sender, EventArgs e)
