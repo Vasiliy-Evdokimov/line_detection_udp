@@ -22,7 +22,7 @@ namespace udp_draw
     {
         public int img_width;
         public int img_height;
-        public bool error_flag;
+        public int error_flags;
         //
         public int max_points_count;
         public int points_count;
@@ -63,6 +63,7 @@ namespace udp_draw
 
         Font textFont;
         SolidBrush textBrush;
+        SolidBrush cameraBrush;
 
         public MainForm()
         {
@@ -77,6 +78,7 @@ namespace udp_draw
             //
             textFont = new Font("Arial", 16);
             textBrush = new SolidBrush(Color.Cyan);
+            cameraBrush = new SolidBrush(Color.Red);
         }
 
         private void Form1_Paint(object sender, PaintEventArgs e)
@@ -103,9 +105,16 @@ namespace udp_draw
                 Brush borderBrush = new SolidBrush(Color.Black);
                 g.FillRectangle(borderBrush, left_offset + offset, top_offset, cd.img_width, cd.img_height);
                 //
-                if (cd.error_flag)
-                {
-                    DrawFlagEllipse(g, left_offset + offset + 20, top_offset + 20, Color.Red);
+                if (cd.error_flags > 0) { 
+                    if ((cd.error_flags & 1) > 0)
+                    {
+                        DrawFlagEllipse(g, left_offset + offset + 20, top_offset + 20, Color.Red);
+                    }
+                    if ((cd.error_flags & 4) > 0)
+                    {
+                        g.DrawString("Camera error!", textFont, cameraBrush,
+                            left_offset + offset + 170, top_offset + 50);
+                    }
                 }
                 else
                 {
@@ -157,7 +166,7 @@ namespace udp_draw
             {
                 int img_width = BitConverter.ToInt16(receivedBytes, off + 0);
                 int img_height = BitConverter.ToInt16(receivedBytes, off + 2);
-                int error_flag = BitConverter.ToInt16(receivedBytes, off + 4);
+                int error_flags = BitConverter.ToInt16(receivedBytes, off + 4);
                 //
                 new_form_width += img_width;
                 new_form_height += img_height;
@@ -182,7 +191,8 @@ namespace udp_draw
                 //
                 cam_data[i].img_width = img_width;
                 cam_data[i].img_height = img_height;
-                cam_data[i].error_flag = (error_flag > 0);
+                //
+                cam_data[i].error_flags = error_flags;
                 //
                 cam_data[i].max_points_count = max_points_count;
                 cam_data[i].points_count = points_count;
@@ -245,6 +255,7 @@ namespace udp_draw
             //
             textFont.Dispose();
             textBrush.Dispose();
+            cameraBrush.Dispose();
         }        
 
         private void timer1_Tick(object sender, EventArgs e)
