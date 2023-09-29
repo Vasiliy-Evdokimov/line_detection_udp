@@ -56,8 +56,8 @@
             this.Controls.Add(this.lbMessages);
             this.Name = "MainForm";
             this.Text = "MainForm";
-            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Form1_FormClosing);
-            this.Paint += new System.Windows.Forms.PaintEventHandler(this.Form1_Paint);
+            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.MainForm_FormClosing);
+            this.Paint += new System.Windows.Forms.PaintEventHandler(this.MainForm_Paint);
             this.ResumeLayout(false);
 
         }
