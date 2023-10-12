@@ -96,13 +96,13 @@ namespace udp_draw
 
         CamData[] cam_data = new CamData[2];
 
-        const string serverIP = "192.168.1.5";
+        const string serverIP = "192.168.1.5";    //  "192.168.49.22"
         const int serverPort = 8888;
 
         UdpClient client;
         IPEndPoint serverEndPoint;
 
-        const string reqMessage = "WAITFORDATA";
+        const string reqMessage = "camera";
         byte[] reqData;
         int reqDataLength;
 
@@ -231,22 +231,22 @@ namespace udp_draw
                 new_form_height += img_height;
                 //
                 int max_points_count_idx = off + 6;
-                byte max_points_count = receivedBytes[max_points_count_idx];
-                byte points_count = receivedBytes[max_points_count_idx + 1];
+                int max_points_count = BitConverter.ToInt16(receivedBytes, max_points_count_idx);
+                int points_count = BitConverter.ToInt16(receivedBytes, max_points_count_idx + 2);
+                //                
+                int max_hor_count_idx = max_points_count_idx + 4 + max_points_count * 4;
+                int max_hor_count = BitConverter.ToInt16(receivedBytes, max_hor_count_idx);
+                int hor_count = BitConverter.ToInt16(receivedBytes, max_hor_count_idx + 2);
                 //
-                int max_hor_count_idx = off + 8 + max_points_count * 4;
-                byte max_hor_count = receivedBytes[max_hor_count_idx];
-                byte hor_count = receivedBytes[max_hor_count_idx + 1];
-                //
-                int flag_idx = max_hor_count_idx + 2 + max_hor_count * 2;
-                byte zone_flags = receivedBytes[flag_idx];
-                byte stop_distance = receivedBytes[flag_idx + 1];
+                int flag_idx = max_hor_count_idx + 4 + max_hor_count * 2;
+                int zone_flags = BitConverter.ToInt16(receivedBytes, flag_idx);
+                int stop_distance = BitConverter.ToInt16(receivedBytes, flag_idx + 2);
                 //
                 int pack_size =
                     2 + 2 + 2 +
-                    2 + max_points_count * 4 +
-                    2 + max_hor_count * 2 + 
-                    2;
+                    4 + max_points_count * 4 +
+                    4 + max_hor_count * 2 + 
+                    4;
                 //
                 cam_data[i].img_width = img_width;
                 cam_data[i].img_height = img_height;
@@ -270,8 +270,8 @@ namespace udp_draw
                 curr_points.Add(new Point((img_width / 2) + left_offset + img_offset, img_height + top_offset));
                 for (int j = 0; j < points_count; j++)
                 {
-                    x = BitConverter.ToInt16(receivedBytes, max_points_count_idx + 2 + j * 4);
-                    y = BitConverter.ToInt16(receivedBytes, max_points_count_idx + 4 + j * 4);
+                    x = BitConverter.ToInt16(receivedBytes, max_points_count_idx + 4 + j * 4);
+                    y = BitConverter.ToInt16(receivedBytes, max_points_count_idx + 6 + j * 4);
                     points_str += string.Format("({0}; {1}) ", x, y);
                     x += left_offset + img_offset;
                     y += top_offset;
@@ -282,7 +282,7 @@ namespace udp_draw
                 List<int> curr_hor = new List<int>();
                 for (int j = 0; j < hor_count; j++)
                 {
-                    y = BitConverter.ToInt16(receivedBytes, max_hor_count_idx + 2 + j * 2);
+                    y = BitConverter.ToInt16(receivedBytes, max_hor_count_idx + 4 + j * 2);
                     points_str += string.Format("({0}) ", y);
                     y += top_offset;
                     curr_hor.Add(y);
