@@ -108,7 +108,8 @@ namespace udp_draw
 
         Font textFont;
         SolidBrush textBrush;
-        SolidBrush cameraBrush;
+        SolidBrush camErrorBrush;
+        SolidBrush camTimeoutBrush;
 
         public MainForm()
         {
@@ -123,7 +124,8 @@ namespace udp_draw
             //
             textFont = new Font("Arial", 16);
             textBrush = new SolidBrush(Color.Cyan);
-            cameraBrush = new SolidBrush(Color.Red);
+            camErrorBrush = new SolidBrush(Color.Red);
+            camTimeoutBrush = new SolidBrush(Color.Magenta);
         }
 
         private void MainForm_Paint(object sender, PaintEventArgs e)
@@ -157,8 +159,13 @@ namespace udp_draw
                     }
                     if ((cd.error_flags & 4) > 0)
                     {
-                        g.DrawString("Camera error!", textFont, cameraBrush,
+                        g.DrawString("Camera error!", textFont, camErrorBrush,
                             left_offset + offset + 170, top_offset + 50);
+                    }
+                    if ((cd.error_flags & 8) > 0)
+                    {
+                        g.DrawString("Camera timeout!", textFont, camTimeoutBrush,
+                            left_offset + offset + 170, top_offset + 80);
                     }
                 }
                 else
@@ -256,8 +263,8 @@ namespace udp_draw
                 cam_data[i].max_points_count = max_points_count;
                 cam_data[i].points_count = points_count;
                 //
-                cam_data[i].max_points_count = max_hor_count;
-                cam_data[i].points_count = hor_count;
+                cam_data[i].max_hor_count = max_hor_count;
+                cam_data[i].hor_count = hor_count;
                 //
                 cam_data[i].fl_slow_zone = ((zone_flags & 4) > 0);
                 cam_data[i].fl_stop_zone = ((zone_flags & 2) > 0);
@@ -314,7 +321,8 @@ namespace udp_draw
             //
             textFont.Dispose();
             textBrush.Dispose();
-            cameraBrush.Dispose();
+            camErrorBrush.Dispose();
+            camTimeoutBrush.Dispose();
         }        
 
         private void timer1_Tick(object sender, EventArgs e)
