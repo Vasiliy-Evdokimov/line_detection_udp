@@ -15,6 +15,8 @@ using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 using System.Reflection.Emit;
 using System.Xml.Linq;
 using System.Runtime.ConstrainedExecution;
+using System.Reflection;
+using System.Security.Cryptography;
 
 namespace udp_draw
 {
@@ -81,6 +83,9 @@ namespace udp_draw
         public bool fl_stop_zone;
         public bool fl_stop_mark;
         public int stop_mark_distance;
+        //
+        public int center_x;
+        public int center_x_mm;
     }
 
     public partial class MainForm : Form
@@ -138,133 +143,78 @@ namespace udp_draw
             Brush br = new SolidBrush(aColor);
             g.FillEllipse(br, aX, aY, 30, 30);
         }
-        
-        private void Draw(Graphics g)
+
+        private void TopLeft(int imgW, int imgH, ref Point pt)
         {
-            
-            int offset = 0;
-
-            for (int i = 0; i < cam_data.Length; i++) {
-
-                CamData cd = cam_data[i];
-
-                Pen borderPen = new Pen(Color.Yellow, 4);
-                Brush borderBrush = new SolidBrush(Color.Black);
-                g.FillRectangle(borderBrush, left_offset + offset, top_offset, cd.img_width, cd.img_height);
-                //
-                if (cd.error_flags > 0) { 
-                    if ((cd.error_flags & 1) > 0)
-                    {
-                        DrawFlagEllipse(g, left_offset + offset + 20, top_offset + 20, Color.Red);
-                    }
-                    if ((cd.error_flags & 4) > 0)
-                    {
-                        g.DrawString("Camera error!", textFont, camErrorBrush,
-                            left_offset + offset + 170, top_offset + 50);
-                    }
-                    if ((cd.error_flags & 8) > 0)
-                    {
-                        g.DrawString("Camera timeout!", textFont, camTimeoutBrush,
-                            left_offset + offset + 170, top_offset + 80);
-                    }
-                }
-                else
-                {
-                    Pen linePen = new Pen(Color.Green, 4);
-                    if (cd.curr_points != null)
-                    if (cd.curr_points.Count > 1)
-                        for (int j = 1; j < cd.curr_points.Count; j++)
-                            g.DrawLine(linePen, cd.curr_points[j - 1], cd.curr_points[j]);
-                    //
-                    Pen horPen = new Pen(Color.Red, 4);
-                    if (cd.curr_hor != null)
-                    for (int j = 0; j < cd.curr_hor.Count; j++)
-                        g.DrawLine(horPen,
-                            left_offset + offset, cd.curr_hor[j],
-                            left_offset + offset + cd.img_width, cd.curr_hor[j]);
-                }
-                //
-                if (cd.fl_slow_zone)
-                    DrawFlagEllipse(g, left_offset + offset + 50, top_offset + 20, Color.Green);
-                if (cd.fl_stop_zone)
-                    DrawFlagEllipse(g, left_offset + offset + 80, top_offset + 20, Color.Blue);
-                if (cd.fl_stop_mark)
-                {
-                    Color clr = Color.Cyan;
-                    DrawFlagEllipse(g, left_offset + offset + 110, top_offset + 20, clr);
-                    //
-                    g.DrawString(cd.stop_mark_distance.ToString(), textFont, textBrush,
-                        left_offset + offset + 140, top_offset + 20);
-                }
-
-                offset += cd.img_width + 10;
-
-            }            
+            pt.X += imgW / 2;
+            pt.Y = imgH / 2 - pt.Y;
         }
 
-        private void ProcessReceivedData(byte[] receivedBytes)
+        private void AddPoint(ref Point a, Point b)
         {
+            a.X += b.X;
+            a.Y += b.Y;
+        }            
 
-            /* ToDo */
+        private void ProcessReceivedData(byte[] receivedBytes)
+        {            
             byte[] buf = new byte[receivedBytes.Length - 2];
             int rcvd_crc = BitConverter.ToInt16(receivedBytes, receivedBytes.Length - 2);
             Array.Copy(receivedBytes, buf, buf.Length);
             int chck_crc = BitConverter.ToInt16(CRC16_MODBUS.fn_makeCRC16_byte(buf), 0);
 
-            if (rcvd_crc != chck_crc) {
-                lbMessages.Invoke((MethodInvoker)(() => {                    
-                    lbMessages.Items.Insert(0, "CRC16 error!");                    
+            if (rcvd_crc != chck_crc)
+            {
+                lbMessages.Invoke((MethodInvoker)(() =>
+                {
+                    lbMessages.Items.Insert(0, "CRC16 error!");
                 }));
                 return;
             }
 
             string fullData = BitConverter.ToString(receivedBytes).Replace("-", " ");
             //
-            int img_offset = 0;
-            int off = 2;
-
             int counter = BitConverter.ToInt16(receivedBytes, 0);
+
+            int pack_offset = 2;
 
             int new_form_width = 0;
             int new_form_height = 0;
 
             for (int i = 0; i < 2; i++) 
             {
-                int img_width = BitConverter.ToInt16(receivedBytes, off + 0);
-                int img_height = BitConverter.ToInt16(receivedBytes, off + 2);
-                int error_flags = BitConverter.ToInt16(receivedBytes, off + 4);
+                cam_data[i].img_width = BitConverter.ToInt16(receivedBytes, pack_offset + 0);
+                cam_data[i].img_height = BitConverter.ToInt16(receivedBytes, pack_offset + 2);
+                int error_flags = BitConverter.ToInt16(receivedBytes, pack_offset + 4);
                 //
-                new_form_width += img_width;
-                new_form_height += img_height;
+                new_form_width += cam_data[i].img_width;
+                new_form_height += cam_data[i].img_height;
                 //
-                int max_points_count_idx = off + 6;
-                int max_points_count = BitConverter.ToInt16(receivedBytes, max_points_count_idx);
-                int points_count = BitConverter.ToInt16(receivedBytes, max_points_count_idx + 2);
+                int max_points_count_idx = pack_offset + 6;
+                cam_data[i].max_points_count = BitConverter.ToInt16(receivedBytes, max_points_count_idx);
+                cam_data[i].points_count = BitConverter.ToInt16(receivedBytes, max_points_count_idx + 2);
                 //                
-                int max_hor_count_idx = max_points_count_idx + 4 + max_points_count * 4;
-                int max_hor_count = BitConverter.ToInt16(receivedBytes, max_hor_count_idx);
-                int hor_count = BitConverter.ToInt16(receivedBytes, max_hor_count_idx + 2);
+                int max_hor_count_idx = max_points_count_idx + 2 + 2 + cam_data[i].max_points_count * 4;
+                cam_data[i].max_hor_count = BitConverter.ToInt16(receivedBytes, max_hor_count_idx);
+                cam_data[i].hor_count = BitConverter.ToInt16(receivedBytes, max_hor_count_idx + 2);
                 //
-                int flag_idx = max_hor_count_idx + 4 + max_hor_count * 2;
+                int flag_idx = max_hor_count_idx + 2 + 2 + cam_data[i].max_hor_count * 2;
                 int zone_flags = BitConverter.ToInt16(receivedBytes, flag_idx);
                 int stop_distance = BitConverter.ToInt16(receivedBytes, flag_idx + 2);
                 //
+                int center_idx = flag_idx + 2 + 2;
+                cam_data[i].center_x = BitConverter.ToInt16(receivedBytes, center_idx);
+                cam_data[i].center_x_mm = BitConverter.ToInt16(receivedBytes, center_idx + 2);
+                //
                 int pack_size =
                     2 + 2 + 2 +
-                    4 + max_points_count * 4 +
-                    4 + max_hor_count * 2 + 
-                    4;
-                //
-                cam_data[i].img_width = img_width;
-                cam_data[i].img_height = img_height;
+                    2 + 2 + cam_data[i].max_points_count * 4 +
+                    2 + 2 + cam_data[i].max_hor_count * 2 + 
+                    2 + 2 +
+                    //
+                    2 + 2;
                 //
                 cam_data[i].error_flags = error_flags;
-                //
-                cam_data[i].max_points_count = max_points_count;
-                cam_data[i].points_count = points_count;
-                //
-                cam_data[i].max_hor_count = max_hor_count;
-                cam_data[i].hor_count = hor_count;
                 //
                 cam_data[i].fl_slow_zone = ((zone_flags & 4) > 0);
                 cam_data[i].fl_stop_zone = ((zone_flags & 2) > 0);
@@ -274,30 +224,25 @@ namespace udp_draw
                 string points_str = "";
                 int x, y;
                 List<Point> curr_points = new List<Point>();
-                curr_points.Add(new Point((img_width / 2) + left_offset + img_offset, img_height + top_offset));
-                for (int j = 0; j < points_count; j++)
+                for (int j = 0; j < cam_data[i].points_count; j++)
                 {
                     x = BitConverter.ToInt16(receivedBytes, max_points_count_idx + 4 + j * 4);
                     y = BitConverter.ToInt16(receivedBytes, max_points_count_idx + 6 + j * 4);
                     points_str += string.Format("({0}; {1}) ", x, y);
-                    x += left_offset + img_offset;
-                    y += top_offset;
                     curr_points.Add(new Point(x, y));
                 }
                 cam_data[i].curr_points = curr_points;
                 //
                 List<int> curr_hor = new List<int>();
-                for (int j = 0; j < hor_count; j++)
+                for (int j = 0; j < cam_data[i].hor_count; j++)
                 {
                     y = BitConverter.ToInt16(receivedBytes, max_hor_count_idx + 4 + j * 2);
                     points_str += string.Format("({0}) ", y);
-                    y += top_offset;
                     curr_hor.Add(y);
                 }
                 cam_data[i].curr_hor = curr_hor;
                 //
-                off += pack_size;
-                img_offset += img_width + 10;
+                pack_offset += pack_size;
             }
             //
             new_form_width += left_offset * 4;
@@ -315,29 +260,118 @@ namespace udp_draw
             }));
         }
 
+        private void Draw(Graphics g)
+        {
+            Point offset_point = new Point(left_offset, top_offset);
+
+            Font pointFont = new Font("Arial", 10);
+            SolidBrush pointBrush = new SolidBrush(Color.Yellow);
+            Font centerFont = new Font("Arial", 10);
+            SolidBrush centerBrush = new SolidBrush(Color.Magenta);
+
+            Font horFont = new Font("Arial", 10);
+            Pen horPen = new Pen(Color.Red, 2);
+            Brush horBrush = new SolidBrush(Color.Red);
+
+            Brush borderBrush = new SolidBrush(Color.Black);
+
+            Pen linePen = new Pen(Color.Green, 2);
+
+            for (int i = 0; i < cam_data.Length; i++)
+            {
+                CamData cd = cam_data[i];
+
+                int center_y = cd.img_height / 2 + top_offset;
+                
+                g.FillRectangle(borderBrush, offset_point.X, offset_point.Y, cd.img_width, cd.img_height);
+                //
+                if (cd.error_flags > 0)
+                {
+                    if ((cd.error_flags & 1) > 0)
+                        DrawFlagEllipse(g, offset_point.X + 20, top_offset + 20, Color.Red);
+                    if ((cd.error_flags & 4) > 0)
+                        g.DrawString("Camera error!", textFont, camErrorBrush,
+                            offset_point.X + 170, top_offset + 50);
+                    if ((cd.error_flags & 8) > 0)
+                        g.DrawString("Camera timeout!", textFont, camTimeoutBrush,
+                            offset_point.X + 170, top_offset + 80);
+                }
+                else
+                {
+                    if (cd.curr_points != null)
+                        if (cd.curr_points.Count > 1)
+                        {
+                            Point pt1 = new Point((cd.img_width / 2) + offset_point.X, cd.img_height + top_offset);
+                            for (int j = 0; j < cd.curr_points.Count; j++)
+                            {
+                                Point pt2 = cd.curr_points[j];
+                                TopLeft(cd.img_width, cd.img_height, ref pt2);
+                                AddPoint(ref pt2, offset_point);
+                                g.DrawLine(linePen, pt1, pt2);
+                                //
+                                g.FillEllipse(pointBrush, pt2.X - 3, pt2.Y - 3, 6, 6);
+                                g.DrawString("(" + cd.curr_points[j].X + ";" + cd.curr_points[j].Y + ") px", 
+                                    pointFont, pointBrush, pt2.X + 5, pt2.Y - 10);
+                                //
+                                pt1 = pt2;
+                            }
+                        }
+                    //
+                    Point center_pt = new Point(cd.center_x + (cd.img_width / 2) + offset_point.X, center_y);
+                    g.FillEllipse(centerBrush, center_pt.X - 3, center_pt.Y - 3, 6, 6);
+                    g.DrawString(cd.center_x + " px", centerFont, centerBrush, center_pt.X + 5, center_pt.Y - 10);
+                    g.DrawString(cd.center_x_mm + " mm", centerFont, centerBrush, center_pt.X + 5, center_pt.Y + 5);
+                    //
+                    if (cd.curr_hor != null)
+                        for (int j = 0; j < cd.curr_hor.Count; j++)
+                        {
+                            int hor_y = center_y - cd.curr_hor[j];
+                            g.DrawLine(horPen,
+                                offset_point.X, hor_y,
+                                offset_point.X + cd.img_width, hor_y);
+                            g.DrawString(cd.curr_hor[j] + " px",
+                                    horFont, horBrush, offset_point.X + 5, hor_y + 5);
+                        }
+                }
+                //
+                if (cd.fl_slow_zone)
+                    DrawFlagEllipse(g, offset_point.X + 50, top_offset + 20, Color.Green);
+                if (cd.fl_stop_zone)
+                    DrawFlagEllipse(g, offset_point.X + 80, top_offset + 20, Color.Blue);
+                if (cd.fl_stop_mark)
+                {
+                    Color clr = Color.Cyan;
+                    DrawFlagEllipse(g, offset_point.X + 110, top_offset + 20, clr);
+                    //
+                    g.DrawString(cd.stop_mark_distance.ToString(), textFont, textBrush,
+                        offset_point.X + 140, top_offset + 20);
+                }
+
+                offset_point.X += cd.img_width + 10;
+            }
+        }
+
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
-        {            
+        {
             client.Close();
             //
             textFont.Dispose();
             textBrush.Dispose();
             camErrorBrush.Dispose();
             camTimeoutBrush.Dispose();
-        }        
+        }
 
         private void timer1_Tick(object sender, EventArgs e)
         {
             try
-            {                
-
+            {
                 // Отправка сообщения по UDP
                 client.Send(reqData, reqDataLength, serverEndPoint);
-                Console.WriteLine("Сообщение отправлено: {0}", reqMessage);
-
+                //Console.WriteLine("Сообщение отправлено: {0}", reqMessage);
+                //
                 IPEndPoint remoteEP = null;
                 byte[] receivedBytes = client.Receive(ref remoteEP);
                 ProcessReceivedData(receivedBytes);
-
             }
             catch (Exception ex)
             {
@@ -349,5 +383,5 @@ namespace udp_draw
             }
         }
     }
-    
+
 }
